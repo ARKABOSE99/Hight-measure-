@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Camera Height Measure</title>
+<style>
+:root{--bg:#fff;--fg:#111;--mut:#666;--card:#f2f3f5;--ac:#2563eb;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#111;--fg:#eee;--mut:#999;--card:#1e1f22;--ac:#5b8cff;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#111;--fg:#eee;--mut:#999;--card:#1e1f22;--ac:#5b8cff;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:#000;color:var(--fg);font-family:system-ui,sans-serif;overflow:hidden}
+#v{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
+.ch{position:fixed;left:50%;top:38%;width:0;height:0;pointer-events:none}
+.ch i{position:absolute;background:#2f2;box-shadow:0 0 3px #000}
+.ch .a{left:-22px;top:-1px;width:44px;height:2px}.ch .b{left:-1px;top:-22px;width:2px;height:44px}
+.ch .c{left:-5px;top:-5px;width:10px;height:10px;border:2px solid #2f2;border-radius:50%;background:none;box-shadow:0 0 3px #000}
+.hz{position:fixed;left:0;right:0;top:38%;height:0;border-top:1px dashed #fff6;pointer-events:none}
+.top{position:fixed;left:0;right:0;top:0;padding:calc(env(safe-area-inset-top,0px) + 8px) 12px 8px;display:flex;gap:8px;justify-content:space-between;color:#fff}
+.pill{background:#000a;padding:6px 10px;border-radius:999px;font-size:13px}
+.sheet{position:fixed;left:0;right:0;bottom:0;background:var(--bg);color:var(--fg);border-radius:18px 18px 0 0;padding:12px 14px calc(env(safe-area-inset-bottom,0px) + 12px)}
+.res{font-size:28px;font-weight:700}.sm{font-size:13px;color:var(--mut);min-height:18px}
+.row{display:flex;gap:8px;margin-top:8px;align-items:center}
+button{flex:1;font-size:16px;padding:12px;border:0;border-radius:10px;background:var(--ac);color:#fff}
+button.s{background:var(--card);color:var(--fg)}
+input{width:90px;font-size:16px;padding:8px;border-radius:8px;border:1px solid var(--mut);background:var(--bg);color:var(--fg)}
+label{font-size:13px;color:var(--mut);flex:1}
+#ov{position:fixed;inset:0;background:#000d;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:#fff;text-align:center;padding:24px}
+#ov button{flex:none;padding:14px 28px;font-size:18px}
+</style></head><body>
+<video id="v" autoplay playsinline muted></video>
+<div class="hz"></div>
+<div class="ch"><i class="a"></i><i class="b"></i><i class="c"></i></div>
+<div class="top"><div class="pill" id="ang">Tilt: –</div><div class="pill" id="mode">Next: mark base</div></div>
+<div id="ov"><div style="font-size:20px;font-weight:600">Turn on camera</div><div id="ovm" style="font-size:14px;opacity:.8">Allow camera and motion access to start measuring.</div><button id="go">Turn camera on</button></div>
+<div class="sheet">
+<div class="res" id="out">–</div><div class="sm" id="d"></div><div class="sm" id="st">Aim the cross at the base of the object, then the top.</div>
+<div class="row"><label for="h">Phone height above ground (m)</label><input id="h" type="number" step="0.01" value="1.50"></div>
+<div class="row"><button id="b">Mark base</button><button id="t">Mark top</button><button class="s" id="r">Reset</button></div>
+</div>
+<script>
+var elev=null,base=null,top=null,stream=null,$=function(i){return document.getElementById(i)};
+function show(){$("ang").textContent="Tilt: "+(elev==null?"–":(elev>=0?"+":"")+elev.toFixed(1)+"°")}
+function onO(e){if(e.beta!=null){elev=e.beta-90;show()}}
+async function cam(){
+ var tries=[{video:{facingMode:{ideal:"environment"},width:{ideal:1280},height:{ideal:720}},audio:false},{video:true,audio:false}];
+ for(var i=0;i<tries.length;i++){
+  try{stream=await navigator.mediaDevices.getUserMedia(tries[i]);$("v").srcObject=stream;await $("v").play().catch(function(){});return true}catch(e){$("ovm").textContent="Camera blocked: "+(e.name||"error")+". Allow camera access in your browser, or open this page in Chrome or Safari directly."}
+ }
+ return false;
+}
+async function sensors(){
+ try{
+  if(window.DeviceOrientationEvent&&typeof DeviceOrientationEvent.requestPermission==="function"){
+   var p=await DeviceOrientationEvent.requestPermission();if(p!=="granted")throw 0}
+  window.addEventListener("deviceorientation",onO,true);
+ }catch(e){$("st").textContent="Motion sensor permission denied."}
+}
+async function start(){
+ var ok=await cam();await sensors();
+ if(ok)$("ov").style.display="none";else $("go").textContent="Try again";
+}
+function calc(){
+ if(base==null||top==null)return;
+ var h=parseFloat($("h").value);
+ if(!(h>0)){$("st").textContent="Enter a valid phone height.";return}
+ if(base>=-1){$("st").textContent="Base mark must point below the horizon. Aim lower at the ground contact point.";base=null;$("mode").textContent="Next: mark base";return}
+ var dist=h/Math.tan(-base*Math.PI/180);
+ var H=h+dist*Math.tan(top*Math.PI/180);
+ $("out").textContent=H.toFixed(2)+" m";
+ $("d").textContent="≈ "+(H*3.2808).toFixed(2)+" ft · distance ≈ "+dist.toFixed(2)+" m";
+ $("st").textContent="Done. Tap Reset to measure again.";$("mode").textContent="Done";
+}
+$("go").onclick=start;
+$("b").onclick=function(){if(elev==null){$("st").textContent="No tilt reading yet. Turn the camera on first.";return}base=elev;$("st").textContent="Base saved. Now aim at the top.";$("mode").textContent="Next: mark top";calc()};
+$("t").onclick=function(){if(elev==null){$("st").textContent="No tilt reading yet. Turn the camera on first.";return}top=elev;$("st").textContent=base==null?"Top saved. Now mark the base.":"";$("mode").textContent=base==null?"Next: mark base":"Done";calc()};
+$("r").onclick=function(){base=null;top=null;$("out").textContent="–";$("d").textContent="";$("st").textContent="Aim the cross at the base of the object, then the top.";$("mode").textContent="Next: mark base"};
+if(!(window.DeviceOrientationEvent&&typeof DeviceOrientationEvent.requestPermission==="function"))window.addEventListener("deviceorientation",onO,true);
+cam().then(function(ok){if(ok)$("ov").style.display="none"});
+</script></body></html>
